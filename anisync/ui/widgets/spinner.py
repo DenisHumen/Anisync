@@ -3,38 +3,94 @@ from __future__ import annotations
 
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 
 class Spinner(QWidget):
-    def __init__(self, size: int = 18, color: str = "#FFFFFF") -> None:
+    def __init__(
+        self,
+        size: int = 18,
+        color: str = "#FFFFFF",
+        *,
+        thickness: float = 2.2,
+        auto_start: bool = False,
+    ) -> None:
         super().__init__()
         self.setFixedSize(size, size)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._angle = 0
         self._color = QColor(color)
+        self._thickness = thickness
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._step)
+        if auto_start:
+            self.start()
 
     def start(self) -> None:
         if not self._timer.isActive():
-            self._timer.start(45)
+            self._timer.start(40)
 
     def stop(self) -> None:
         self._timer.stop()
         self.update()
 
+    def hideEvent(self, e):  # noqa: N802
+        self._timer.stop()
+        super().hideEvent(e)
+
+    def showEvent(self, e):  # noqa: N802
+        self.start()
+        super().showEvent(e)
+
     def _step(self) -> None:
-        self._angle = (self._angle + 22) % 360
+        self._angle = (self._angle + 18) % 360
         self.update()
 
     def paintEvent(self, _evt) -> None:  # noqa: N802
-        if not self._timer.isActive():
-            return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = self.rect().adjusted(2, 2, -2, -2)
-        pen = QPen(self._color, 2.2)
+        m = int(self._thickness) + 2
+        rect = self.rect().adjusted(m, m, -m, -m)
+        # faint track
+        track = QColor(self._color)
+        track.setAlpha(45)
+        pen_t = QPen(track, self._thickness)
+        pen_t.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen_t)
+        p.drawArc(rect, 0, 360 * 16)
+        # moving arc
+        pen = QPen(self._color, self._thickness)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         p.setPen(pen)
-        # 270° arc rotating
-        p.drawArc(rect, -self._angle * 16, 270 * 16)
+        p.drawArc(rect, -self._angle * 16, 110 * 16)
+
+
+class LoadingPanel(QWidget):
+    """Centred big spinner with a label — for full-page loading states."""
+
+    def __init__(
+        self,
+        message: str = "Loading…",
+        parent: QWidget | None = None,
+        *,
+        size: int = 52,
+        color: str = "#7A9CFF",
+    ) -> None:
+        super().__init__(parent)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(40, 80, 40, 80)
+        v.setSpacing(18)
+        v.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._spinner = Spinner(size=size, color=color, thickness=4, auto_start=True)
+        v.addWidget(self._spinner, 0, Qt.AlignmentFlag.AlignHCenter)
+        self._label = QLabel(message)
+        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._label.setObjectName("muted")
+        self._label.setStyleSheet("font-size:14px;")
+        v.addWidget(self._label)
+
+    def set_message(self, text: str) -> None:
+        self._label.setText(text)
+
+    def stop(self) -> None:
+        self._spinner.stop()

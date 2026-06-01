@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import json
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
@@ -18,6 +20,7 @@ from anisync.core.models import (
     AnimeSummary,
     DownloadStatus,
     DownloadTask,
+    Episode,
     HistoryEntry,
     ListKind,
 )
@@ -62,6 +65,15 @@ CREATE TABLE IF NOT EXISTS history (
     duration_seconds INTEGER NOT NULL DEFAULT 0,
     watched_at       TEXT NOT NULL,
     PRIMARY KEY (user_id, provider_id, anime_url, episode_number)
+);
+
+CREATE TABLE IF NOT EXISTS anime_full_cache (
+    provider_id    TEXT NOT NULL,
+    url            TEXT NOT NULL,
+    anime_json     TEXT NOT NULL,
+    episodes_json  TEXT NOT NULL,
+    updated_at     TEXT NOT NULL,
+    PRIMARY KEY (provider_id, url)
 );
 
 CREATE TABLE IF NOT EXISTS downloads (
@@ -158,6 +170,55 @@ class LibraryService:
             poster_url=row["poster_url"], year=row["year"],
             episodes_count=row["episodes_count"], type=row["type"],
         )
+
+    # ─── full anime + episodes cache (for instant details page) ──────────
+
+    def cache_anime_full(self, anime: Anime, episodes: list[Episode]) -> None:
+        """Persist a full anime payload + episodes for instant re-open."""
+        anime_d = asdict(anime)
+        # tuples → lists for JSON; we restore tuples on load
+        anime_d["genres"] = list(anime_d.get("genres") or ())
+        anime_d["studios"] = list(anime_d.get("studios") or ())
+        anime_d["dubs"] = list(anime_d.get("dubs") or ())
+        episodes_d = [asdict(e) for e in episodes]
+        with self._lock, self._conn:
+            self._conn.execute(
+                """INSERT INTO anime_full_cache
+                     (provider_id, url, anime_json, episodes_json, updated_at)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT (provider_id, url) DO UPDATE SET
+                     anime_json = excluded.anime_json,
+                     episodes_json = excluded.episodes_json,
+                     updated_at = excluded.updated_at""",
+                (
+                    anime.provider_id, anime.url,
+                    json.dumps(anime_d, ensure_ascii=False),
+                    json.dumps(episodes_d, ensure_ascii=False),
+                    _now(),
+                ),
+            )
+
+    def get_cached_full(
+        self, provider_id: str, url: str
+    ) -> tuple[Anime, list[Episode], datetime] | None:
+        row = self._conn.execute(
+            """SELECT anime_json, episodes_json, updated_at
+                 FROM anime_full_cache WHERE provider_id=? AND url=?""",
+            (provider_id, url),
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            a = json.loads(row["anime_json"])
+            a["genres"] = tuple(a.get("genres") or ())
+            a["studios"] = tuple(a.get("studios") or ())
+            a["dubs"] = tuple(a.get("dubs") or ())
+            anime = Anime(**a)
+            eps = [Episode(**e) for e in json.loads(row["episodes_json"])]
+            updated = datetime.fromisoformat(row["updated_at"])
+            return anime, eps, updated
+        except Exception:
+            return None
 
     # ─── favorites / lists ────────────────────────────────────────────────
 

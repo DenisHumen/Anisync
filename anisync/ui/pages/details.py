@@ -29,6 +29,7 @@ from anisync.core.models import Anime, AnimeSummary, Episode, ListKind
 from anisync.core.registry import provider_registry
 from anisync.utils.async_runner import run_async
 from anisync.ui.widgets.poster_loader import PosterLoader
+from anisync.ui.widgets.spinner import LoadingPanel
 
 
 # ─── Episode tile ──────────────────────────────────────────────────────────
@@ -162,16 +163,26 @@ class DetailsPage(QWidget):
     # ── load ──
 
     def load(self, summary: AnimeSummary) -> None:
-        self._clear()
-        loading = QLabel("Loading…")
-        loading.setObjectName("muted")
-        loading.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        loading.setContentsMargins(0, 80, 0, 80)
-        self._layout.addWidget(loading)
         provider = provider_registry.get(summary.provider_id)
         if provider is None:
             self.error.emit(f"Unknown provider: {summary.provider_id}")
             return
+
+        lib = get_library()
+        cached = lib.get_cached_full(summary.provider_id, summary.url)
+
+        if cached is not None:
+            # Instant paint from cache; refresh quietly in the background.
+            anime, episodes, _updated = cached
+            self._render(anime, episodes)
+            self._refresh_in_background(provider, summary)
+            return
+
+        # No cache → show a nice spinner while the first fetch runs.
+        self._clear()
+        self._loading = LoadingPanel(f"Loading {summary.title}…")
+        self._layout.addWidget(self._loading)
+        self._layout.addStretch(1)
 
         async def fetch():
             anime = await provider.get_anime(summary.url)
@@ -184,6 +195,25 @@ class DetailsPage(QWidget):
             on_error=lambda e: self.error.emit(f"Load failed: {e}"),
         )
 
+    def _refresh_in_background(self, provider, summary: AnimeSummary) -> None:
+        async def fetch():
+            anime = await provider.get_anime(summary.url)
+            episodes = await provider.list_episodes(anime)
+            return anime, episodes
+
+        def _maybe_update(res):
+            anime, episodes = res
+            # Only re-render if the dataset actually changed — avoids flicker.
+            old_ids = [(e.number, e.dub, e.embed_url) for e in self._episodes]
+            new_ids = [(e.number, e.dub, e.embed_url) for e in episodes]
+            if old_ids != new_ids or (self._anime and self._anime.title != anime.title):
+                self._render(anime, episodes)
+            else:
+                # still refresh the cached blob with the latest metadata
+                get_library().cache_anime_full(anime, episodes)
+
+        run_async(fetch(), on_done=_maybe_update, on_error=lambda _e: None)
+
     # ── render ──
 
     def _render(self, anime: Anime, episodes: list[Episode]) -> None:
@@ -191,6 +221,7 @@ class DetailsPage(QWidget):
         self._episodes = episodes
         lib = get_library()
         lib.cache_anime(anime)
+        lib.cache_anime_full(anime, episodes)
         self._watched = lib.episodes_watched(anime.provider_id, anime.url)
 
         self._clear()
