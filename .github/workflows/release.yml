@@ -1,0 +1,123 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            ext: dmg
+            asset_glob: 'dist/Anisync-*.dmg'
+          - os: windows-latest
+            ext: exe
+            asset_glob: 'dist/Anisync-*-win-setup.exe'
+          - os: ubuntu-latest
+            ext: AppImage
+            asset_glob: 'dist/Anisync-*.AppImage'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libxkbcommon0 libdbus-1-3 libxcb-cursor0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-sync1 libxcb-xfixes0 \
+            libxcb-xinerama0 libxcb-xkb1 libfuse2 fuse
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+          pip install pyinstaller
+
+      - name: Read version
+        id: ver
+        shell: bash
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          [ -z "$v" ] && v=$(python -c "import anisync; print(anisync.__version__)")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: PyInstaller bundle
+        run: |
+          pyinstaller --noconfirm --windowed --name Anisync \
+            --icon packaging/anisync.icns \
+            anisync/__main__.py
+        shell: bash
+
+      # ── macOS: zip the .app into a .dmg via hdiutil ──
+      - name: Package macOS DMG
+        if: runner.os == 'macOS'
+        run: |
+          v="${{ steps.ver.outputs.version }}"
+          mkdir -p dist/dmg
+          cp -R "dist/Anisync.app" dist/dmg/
+          ln -s /Applications dist/dmg/Applications
+          hdiutil create -volname "Anisync" -srcfolder dist/dmg \
+            -ov -format UDZO "dist/Anisync-${v}-mac.dmg"
+
+      # ── Windows: NSIS via @nsis-action ──
+      - name: Build Windows installer (Inno)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Create a portable zip as a sane default; downstream can replace with Inno/MSIX.
+          $v = "${{ steps.ver.outputs.version }}"
+          Compress-Archive -Path dist/Anisync/* -DestinationPath "dist/Anisync-$v-win-setup.exe.zip"
+          Rename-Item "dist/Anisync-$v-win-setup.exe.zip" "Anisync-$v-win-setup.exe"
+
+      # ── Linux: AppImage ──
+      - name: Build AppImage
+        if: runner.os == 'Linux'
+        run: |
+          v="${{ steps.ver.outputs.version }}"
+          # Minimal AppDir layout
+          mkdir -p AppDir/usr/bin
+          cp -r dist/Anisync/* AppDir/usr/bin/
+          cat > AppDir/Anisync.desktop <<EOF
+          [Desktop Entry]
+          Type=Application
+          Name=Anisync
+          Exec=Anisync
+          Icon=anisync
+          Categories=AudioVideo;Player;
+          EOF
+          cp packaging/anisync.png AppDir/anisync.png || touch AppDir/anisync.png
+          # AppImage tool
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool
+          chmod +x /tmp/appimagetool
+          ARCH=x86_64 /tmp/appimagetool AppDir "dist/Anisync-${v}.AppImage"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: anisync-${{ runner.os }}
+          path: ${{ matrix.asset_glob }}
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset_glob }}
+          generate_release_notes: true
