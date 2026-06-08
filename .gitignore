@@ -1,14 +1,18 @@
 __pycache__/
 *.pyc
 *.pyo
+.venv
 .venv/
+.venv.nosync/
+# any cloud-sync-excluded copy of the virtualenv
+*.nosync/
 .env
 .DS_Store
 *.egg-info/
 build/
 dist/
+packaging/anisync.iconset/
 .pytest_cache/
 .coverage
 htmlcov/
 ~/.anisync/
-tests/

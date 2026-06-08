@@ -17,7 +17,7 @@ class Config:
     autoplay_next: bool = True
     theme: str = "dark"
     auth_backend_url: str = ""        # set when remote backend is deployed
-    update_repo: str = "anisync/anisync"
+    update_repo: str = "DenisHumen/Anisync"
     check_updates_on_start: bool = True
 
     @classmethod

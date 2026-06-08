@@ -7,10 +7,9 @@ non-macOS platforms we also embed traffic-light-style window controls.
 from __future__ import annotations
 
 import sys
-from typing import Callable
 
-from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtCore import QPoint, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QIcon, QMouseEvent, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -19,6 +18,29 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QWidget,
 )
+
+
+def _make_search_icon(color: str = "#FFFFFF", px: int = 18) -> QIcon:
+    """Draw a crisp magnifier glyph so we never depend on a font that
+    happens to ship the ``⌕`` codepoint (most don't → tofu box)."""
+    scale = 4  # render high-res then let Qt downscale for retina crispness
+    size = px * scale
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    pen = QPen(QColor(color))
+    pen.setWidth(2 * scale)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    p.setPen(pen)
+    # lens (circle) in the upper-left, handle toward the lower-right
+    d = int(size * 0.55)
+    m = int(size * 0.10)
+    p.drawEllipse(m, m, d, d)
+    p.drawLine(m + d - int(d * 0.15), m + d - int(d * 0.15),
+               size - m, size - m)
+    p.end()
+    return QIcon(pm)
 
 
 class TopNav(QFrame):
@@ -44,7 +66,19 @@ class TopNav(QFrame):
             h.addLayout(self._build_traffic_lights())
             h.addSpacing(12)
 
-        # Wordmark
+        # Wordmark (logo mark + text)
+        from anisync.ui.assets import logo_path
+        lp = logo_path()
+        if lp.exists():
+            mark = QLabel()
+            pm = QPixmap(str(lp)).scaled(
+                26, 26,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            mark.setPixmap(pm)
+            h.addWidget(mark)
+            h.addSpacing(8)
         word = QLabel("ANISYNC")
         word.setObjectName("wordmark")
         h.addWidget(word)
@@ -63,7 +97,9 @@ class TopNav(QFrame):
         h.addStretch(1)
 
         # Right side: search + account
-        search = QPushButton("⌕")
+        search = QPushButton()
+        search.setIcon(_make_search_icon())
+        search.setIconSize(QSize(18, 18))
         search.setProperty("icon", True)
         search.setToolTip("Search")
         search.setCursor(Qt.CursorShape.PointingHandCursor)

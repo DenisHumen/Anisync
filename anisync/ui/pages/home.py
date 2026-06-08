@@ -10,7 +10,6 @@ Layout:
 """
 from __future__ import annotations
 
-import asyncio
 import random
 
 from PySide6.QtCore import Qt, Signal
@@ -26,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from anisync.core.library import get_library
-from anisync.core.models import AnimeSummary, HistoryEntry
+from anisync.core.models import AnimeSummary
 from anisync.core.registry import provider_registry
 from anisync.ui.glass import fade_in
 from anisync.ui.widgets.carousel import Carousel

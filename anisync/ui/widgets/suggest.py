@@ -1,7 +1,6 @@
 """Suggestion dropdown shown under a search QLineEdit."""
 from __future__ import annotations
 
-from typing import Callable
 
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtWidgets import (

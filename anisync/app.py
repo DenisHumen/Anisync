@@ -6,9 +6,11 @@ import signal as _signal
 import sys
 
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from anisync.core.registry import load_all
+from anisync.ui.assets import logo_path
 from anisync.utils.async_runner import shutdown as shutdown_async
 from anisync.utils.logging import setup as setup_logging
 
@@ -20,6 +22,9 @@ def run(argv: list[str]) -> int:
     app = QApplication(argv)
     app.setApplicationName("Anisync")
     app.setOrganizationName("Anisync")
+    icon = logo_path()
+    if icon.exists():
+        app.setWindowIcon(QIcon(str(icon)))
 
     # Allow Ctrl+C to terminate gracefully
     _signal.signal(_signal.SIGINT, _signal.SIG_DFL)

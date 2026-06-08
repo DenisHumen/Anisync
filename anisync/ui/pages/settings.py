@@ -117,11 +117,11 @@ class SettingsPage(QWidget):
         c.addSpacing(8)
         actions = QHBoxLayout()
         actions.addStretch(1)
-        save = QPushButton("Save changes")
-        save.setObjectName("primary")
-        save.setCursor(Qt.CursorShape.PointingHandCursor)
-        save.clicked.connect(self._save)
-        actions.addWidget(save)
+        self._save_btn = QPushButton("Save changes")
+        self._save_btn.setObjectName("primary")
+        self._save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._save_btn.clicked.connect(self._save)
+        actions.addWidget(self._save_btn)
         c.addLayout(actions)
 
         body_l.addStretch(1)
@@ -145,3 +145,18 @@ class SettingsPage(QWidget):
         self._cfg.preferred_quality = self._quality.currentData() or "best"
         self._cfg.preferred_dub = self._dub.text()
         self._cfg.save()
+        # Apply the new preferences to the running download manager so a
+        # restart isn't needed for them to take effect.
+        from anisync.core.downloader import get_manager
+        get_manager().reload_config()
+        self._confirm_saved()
+
+    def _confirm_saved(self) -> None:
+        from PySide6.QtCore import QTimer
+        self._save_btn.setText("Saved ✓")
+        self._save_btn.setEnabled(False)
+        QTimer.singleShot(1400, self._reset_save_btn)
+
+    def _reset_save_btn(self) -> None:
+        self._save_btn.setText("Save changes")
+        self._save_btn.setEnabled(True)

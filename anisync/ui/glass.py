@@ -3,13 +3,12 @@ from __future__ import annotations
 
 from PySide6.QtCore import (
     QEasingCurve,
-    QPoint,
     QPointF,
     QPropertyAnimation,
     Qt,
 )
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPixmap, QRadialGradient
-from PySide6.QtWidgets import QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QLabel, QWidget
+from PySide6.QtWidgets import QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QWidget
 
 
 class CinemaBackground(QWidget):

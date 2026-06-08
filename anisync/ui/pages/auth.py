@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from anisync.core.auth import Account, AuthError, AuthService
+from anisync.core.auth import Account, AuthService
 from anisync.core.config import Config
 from anisync.utils.async_runner import run_async
 

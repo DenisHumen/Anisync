@@ -68,9 +68,9 @@ class PosterCard(QFrame):
         self._img.setAlignment(Qt.AlignmentFlag.AlignCenter)
         # Apple-TV-style placeholder gradient
         self._img.setStyleSheet(
-            f"background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
-            f"stop:0 #1A1A22, stop:1 #0D0D12);"
-            f"border-radius: 10px; color:#3A3A4A; font-size:32px; font-weight:300;"
+            "background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
+            "stop:0 #1A1A22, stop:1 #0D0D12);"
+            "border-radius: 10px; color:#3A3A4A; font-size:32px; font-weight:300;"
         )
         self._img.setText(self._initials(summary.title))
         v.addWidget(self._img, 0, Qt.AlignmentFlag.AlignHCenter)

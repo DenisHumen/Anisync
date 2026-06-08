@@ -9,7 +9,6 @@ Layout:
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Iterable
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QPixmap

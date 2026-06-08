@@ -30,7 +30,7 @@ import anisync
 
 log = logging.getLogger(__name__)
 
-GITHUB_REPO = "anisync/anisync"  # override via Config.update_repo
+GITHUB_REPO = "DenisHumen/Anisync"  # override via Config.update_repo
 
 
 @dataclass(frozen=True)

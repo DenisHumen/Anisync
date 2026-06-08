@@ -16,6 +16,7 @@ dependencies = [
     "selectolax>=0.3.21",
     "yt-dlp>=2024.5.27",
     "platformdirs>=4.2",
+    "python-mpv>=1.0.7",  # in-app playback backend (needs native libmpv)
     "tomli>=2.0; python_version<'3.11'",
 ]
 
@@ -24,6 +25,8 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "respx>=0.21",
+    "pyinstaller>=6.0",   # desktop bundles (see packaging/Anisync.spec)
+    "Pillow>=10.0",       # logo/icon generation (packaging/generate_logo.py)
 ]
 
 [project.scripts]

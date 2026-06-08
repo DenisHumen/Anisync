@@ -13,7 +13,8 @@ downloading anime from multiple sources — inspired by Crunchyroll.
 - **Modular player resolver system** — Kodik, Aniboom, etc. plug in independently
   (`anisync/players/`).
 - **First provider:** [`YummyAnime`](https://old.yummyani.me) (Kodik player).
-- **In-app playback** via Qt Multimedia (with planned `mpv` backend).
+- **In-app playback** via embedded **mpv** (libmpv) rendered into a Qt
+  OpenGL surface — HLS/DASH, hardware decoding, custom headers.
 - **Downloader** — queue, pause/resume, progress, pre-download for offline viewing.
 - **Library** (SQLite) — favorites, watch history, custom lists.
 - **Search across providers** with a unified result page.
@@ -22,7 +23,10 @@ downloading anime from multiple sources — inspired by Crunchyroll.
 ## Quick start
 
 ```bash
-# Python 3.11+ required
+# Python 3.11+ required.
+# Native libmpv is needed for in-app playback:
+#   macOS:         brew install mpv
+#   Debian/Ubuntu: sudo apt install libmpv2   (or libmpv1)
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
@@ -33,6 +37,9 @@ python -m anisync
 # Run tests
 pytest -q
 ```
+
+> Tip: `./run.sh` bootstraps the venv, self-heals a broken PySide6 install
+> and launches the app in one step.
 
 ## Documentation
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
@@ -17,7 +17,8 @@ from PySide6.QtWidgets import (
 )
 
 import anisync
-from anisync.core.updater import ReleaseAsset, ReleaseInfo, UpdateService
+from anisync.core import selfupdate
+from anisync.core.updater import ReleaseInfo, UpdateService
 from anisync.utils.async_runner import run_async
 from anisync.utils.paths import data_dir
 
@@ -68,7 +69,10 @@ class UpdateDialog(QDialog):
         notes.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(release.html_url)))
         btns.addWidget(notes)
 
-        self._dl_btn = QPushButton("Download installer")
+        self._can_self_update = selfupdate.can_self_update()
+        self._dl_btn = QPushButton(
+            "Update & restart" if self._can_self_update else "Download installer"
+        )
         self._dl_btn.setProperty("accent", True)
         self._dl_btn.clicked.connect(self._do_download)
         btns.addWidget(self._dl_btn)
@@ -92,6 +96,17 @@ class UpdateDialog(QDialog):
 
     def _on_downloaded(self, path: Path) -> None:
         self._progress.setValue(100)
+        if self._can_self_update:
+            self._status.setText("Installing update…")
+            self._dl_btn.setEnabled(False)
+            # Unpack off the UI thread, then swap + relaunch.
+            run_async(
+                _stage_async(path),
+                on_done=self._on_staged,
+                on_error=self._on_err,
+            )
+            return
+        # Fallback (dev runs / non-writable installs): reveal the download.
         self._status.setText(f"Saved to: {path}")
         self._dl_btn.setText("Open installer")
         self._dl_btn.setEnabled(True)
@@ -101,7 +116,19 @@ class UpdateDialog(QDialog):
             pass
         self._dl_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))))
 
+    def _on_staged(self, new_artifact: Path) -> None:
+        from PySide6.QtWidgets import QApplication
+        self._status.setText("Restarting to finish update…")
+        selfupdate.apply_and_relaunch(new_artifact)
+        QApplication.quit()
+
     def _on_err(self, exc: Exception) -> None:
         self._dl_btn.setEnabled(True)
         self._progress.hide()
-        self._status.setText(f"Download failed: {exc}")
+        self._status.setText(f"Update failed: {exc}")
+
+
+async def _stage_async(asset_path: Path) -> Path:
+    import asyncio
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, selfupdate.stage, asset_path)

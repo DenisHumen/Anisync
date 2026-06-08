@@ -19,12 +19,20 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 VENV="$ROOT/.venv"
+# The real venv lives OUTSIDE the project tree. If the repo sits in a
+# cloud-synced folder (iCloud Desktop&Documents, Dropbox, Google Drive),
+# those services virtualize ("dataless") and conflict-copy the Qt binaries,
+# which makes the platform plugin silently "vanish". Keeping the venv in the
+# home dir avoids that entirely; ``.venv`` is just a symlink so activate /
+# pip shebangs keep working.
+VENV_REAL="${ANISYNC_VENV:-$HOME/.anisync-venv}"
 PY="$VENV/bin/python"
 
 # ── bootstrap venv ───────────────────────────────────────────────────────────
 if [[ ! -x "$PY" ]]; then
-  echo "[run.sh] Creating virtualenv at $VENV"
-  python3 -m venv "$VENV"
+  echo "[run.sh] Creating virtualenv at $VENV_REAL (outside the synced tree)"
+  python3 -m venv "$VENV_REAL"
+  ln -snf "$VENV_REAL" "$VENV"
   "$PY" -m pip install --upgrade pip wheel >/dev/null
   if [[ -f "$ROOT/requirements.txt" ]]; then
     "$PY" -m pip install -r "$ROOT/requirements.txt"

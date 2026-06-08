@@ -17,14 +17,12 @@ from PySide6.QtCore import QEvent, QPoint, QRect, Qt
 from PySide6.QtGui import QCursor, QMouseEvent
 from PySide6.QtWidgets import (
     QFrame,
-    QHBoxLayout,
     QMainWindow,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
-import anisync
 from anisync.core.config import Config
 from anisync.core.downloader import get_manager
 from anisync.core.library import get_library
@@ -168,6 +166,9 @@ class MainWindow(QMainWindow):
         mgr.signals.failed.connect(
             lambda tid, msg: self._snackbar.show_message(f"Download failed: {msg}", level="error")
         )
+
+        # Resume downloads interrupted by a previous run (best-effort).
+        run_async(mgr.resume_pending(), on_error=lambda _e: None)
 
         self._navigate("home")
         self._relayout_overlays()

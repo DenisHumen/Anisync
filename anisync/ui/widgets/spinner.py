@@ -21,25 +21,34 @@ class Spinner(QWidget):
         self._angle = 0
         self._color = QColor(color)
         self._thickness = thickness
+        self._running = False
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._step)
         if auto_start:
             self.start()
 
     def start(self) -> None:
+        self._running = True
         if not self._timer.isActive():
             self._timer.start(40)
+        self.update()
 
     def stop(self) -> None:
+        self._running = False
         self._timer.stop()
         self.update()
 
     def hideEvent(self, e):  # noqa: N802
+        # Pause the animation while off-screen to save CPU; the running
+        # intent is preserved so showEvent can resume it.
         self._timer.stop()
         super().hideEvent(e)
 
     def showEvent(self, e):  # noqa: N802
-        self.start()
+        # Resume only if we were actually meant to be spinning — never
+        # auto-start, otherwise an idle inline spinner animates forever.
+        if self._running and not self._timer.isActive():
+            self._timer.start(40)
         super().showEvent(e)
 
     def _step(self) -> None:
@@ -47,6 +56,9 @@ class Spinner(QWidget):
         self.update()
 
     def paintEvent(self, _evt) -> None:  # noqa: N802
+        # An idle spinner is invisible — no static track/arc left behind.
+        if not self._running:
+            return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         m = int(self._thickness) + 2

@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import asyncio
 
-from PySide6.QtCore import QSize, QTimer, Qt, Signal
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QComboBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -19,7 +18,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )

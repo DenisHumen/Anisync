@@ -101,6 +101,28 @@ class DownloadManager:
         if t:
             t.cancel()
 
+    def reload_config(self) -> None:
+        """Adopt preferences (downloads dir, quality, concurrency) changed
+        while the app is running. New downloads use the new values; tasks
+        already in flight keep the slot they acquired."""
+        self._cfg = Config.load()
+        self._sem = asyncio.Semaphore(self._cfg.max_concurrent_downloads)
+
+    async def resume_pending(self) -> int:
+        """Re-queue downloads left unfinished by a previous run — QUEUED
+        tasks and RUNNING ones interrupted by a crash/quit. Call once at
+        startup. Returns the number of tasks resumed."""
+        resumed = 0
+        for task in self._lib.list_downloads():
+            if task.status not in (DownloadStatus.QUEUED, DownloadStatus.RUNNING):
+                continue
+            if task.id in self._tasks:
+                continue
+            self._mark(task, DownloadStatus.QUEUED)
+            self._tasks[task.id] = asyncio.create_task(self._run(task))
+            resumed += 1
+        return resumed
+
     # ─── core ─────────────────────────────────────────────────────────────
 
     async def _run(self, task: DownloadTask) -> None:

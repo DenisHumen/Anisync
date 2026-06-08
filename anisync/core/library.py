@@ -12,9 +12,7 @@ import json
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
 
-from anisync.core.errors import LibraryError
 from anisync.core.models import (
     Anime,
     AnimeSummary,
