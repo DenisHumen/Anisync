@@ -1,11 +1,23 @@
 """TOML-backed app config (`~/.../Anisync/config.toml`)."""
 from __future__ import annotations
 
+import logging
 import tomllib
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from anisync.utils.paths import config_path, default_downloads_dir
+
+log = logging.getLogger(__name__)
+
+
+def _toml_escape(s: str) -> str:
+    """Escape a string for a TOML *basic* string. Critically, this escapes
+    backslashes — Windows paths like ``C:\\Users`` would otherwise be read
+    back as invalid ``\\U`` unicode escapes and crash the parser."""
+    out = s.replace("\\", "\\\\").replace('"', '\\"')
+    out = out.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+    return out
 
 
 @dataclass(slots=True)
@@ -27,7 +39,14 @@ class Config:
             cfg = cls()
             cfg.save()
             return cfg
-        data = tomllib.loads(p.read_text("utf-8"))
+        try:
+            data = tomllib.loads(p.read_text("utf-8"))
+        except (tomllib.TOMLDecodeError, OSError, UnicodeDecodeError) as e:
+            # A corrupt/legacy config must never crash startup — reset it.
+            log.warning("config unreadable (%s); resetting to defaults", e)
+            cfg = cls()
+            cfg.save()
+            return cfg
         cfg = cls()
         for k, v in data.items():
             if hasattr(cfg, k):
@@ -41,7 +60,7 @@ class Config:
         lines: list[str] = []
         for k, v in asdict(self).items():
             if isinstance(v, str):
-                lines.append(f'{k} = "{v}"')
+                lines.append(f'{k} = "{_toml_escape(v)}"')
             elif isinstance(v, bool):
                 lines.append(f"{k} = {str(v).lower()}")
             else:

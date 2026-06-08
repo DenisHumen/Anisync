@@ -18,6 +18,11 @@ def main() -> int:
 
         load_all()
         print(f"anisync {anisync.__version__}")
+        # Exercise the config round-trip — this is what crashed on Windows
+        # (unescaped backslash paths), so it must be part of the smoke test.
+        from anisync.core.config import Config
+        Config.load()
+        print("config: OK")
         print("providers:", ", ".join(sorted(provider_registry)) or "(none)")
         print("players:", ", ".join(sorted(player_registry)) or "(none)")
         try:
