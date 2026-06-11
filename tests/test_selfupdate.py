@@ -15,6 +15,10 @@ def test_not_frozen_has_no_target(monkeypatch):
     assert selfupdate.can_self_update() is False
 
 
+@pytest.mark.skipif(
+    sys.platform.startswith("win"),
+    reason="Path.resolve() prefixes the current drive on Windows hosts",
+)
 def test_macos_target_is_app_bundle(monkeypatch):
     monkeypatch.setattr(selfupdate.sys, "frozen", True, raising=False)
     monkeypatch.setattr(selfupdate.sys, "platform", "darwin")

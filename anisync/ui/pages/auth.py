@@ -141,6 +141,15 @@ class AuthPage(QWidget):
         self._status_lbl.setWordWrap(True)
         c.addWidget(self._status_lbl)
 
+        # No backend → the forms cannot succeed; grey them out instead of
+        # letting the user type credentials into a dead end (the subtitle
+        # above already explains offline mode).
+        if not self._svc.is_configured:
+            for w in (self._tab_login, self._tab_register,
+                      self._login_user, self._login_pass, self._login_btn,
+                      self._reg_user, self._reg_email, self._reg_pass, self._reg_btn):
+                w.setEnabled(False)
+
         self._me_box = QVBoxLayout()
         c.addLayout(self._me_box)
 

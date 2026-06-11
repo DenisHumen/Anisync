@@ -22,8 +22,12 @@ class HistoryPage(QWidget):
     def __init__(self) -> None:
         super().__init__()
         root = QVBoxLayout(self)
-        root.setContentsMargins(32, 24, 32, 24)
+        root.setContentsMargins(64, 32, 64, 32)
         root.setSpacing(16)
+
+        kicker = QLabel("RECENTLY WATCHED")
+        kicker.setObjectName("kicker")
+        root.addWidget(kicker)
 
         title = QLabel("History")
         title.setObjectName("h1")
@@ -32,11 +36,15 @@ class HistoryPage(QWidget):
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # QScrollArea autofills its viewport with the system palette —
+        # without this the page shows a grey sheet over the dark theme.
+        self._scroll.setStyleSheet("background: transparent;")
         root.addWidget(self._scroll, 1)
 
     def refresh(self) -> None:
         entries = get_library().list_history(limit=100)
         container = QWidget()
+        container.setStyleSheet("background: transparent;")
         v = QVBoxLayout(container)
         v.setSpacing(10)
         if not entries:

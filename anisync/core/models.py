@@ -7,9 +7,14 @@ serializable (no Qt / no httpx objects).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
+
+
+def _utcnow() -> datetime:
+    """Naive UTC timestamp (utcnow() is deprecated from Python 3.12)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,4 +141,4 @@ class DownloadTask:
     progress: float = 0.0          # 0..1
     speed_bps: float = 0.0
     error: str | None = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=_utcnow)

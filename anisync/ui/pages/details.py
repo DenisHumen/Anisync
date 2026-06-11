@@ -23,10 +23,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from anisync.core.config import Config
 from anisync.core.library import get_library
 from anisync.core.models import Anime, AnimeSummary, Episode, ListKind
 from anisync.core.registry import provider_registry
 from anisync.utils.async_runner import run_async
+from anisync.ui.widgets.icons import play_icon
 from anisync.ui.widgets.poster_loader import PosterLoader
 from anisync.ui.widgets.spinner import LoadingPanel
 
@@ -86,7 +88,8 @@ class EpisodeTile(QFrame):
         # Action row
         row = QHBoxLayout()
         row.setSpacing(6)
-        play = QPushButton("▶  Play")
+        play = QPushButton("Play")
+        play.setIcon(play_icon(px=14))
         play.setObjectName("primary")
         play.setCursor(Qt.CursorShape.PointingHandCursor)
         play.clicked.connect(lambda: self.play_clicked.emit(ep))
@@ -116,6 +119,7 @@ class DetailsPage(QWidget):
         self._episodes: list[Episode] = []
         self._watched: set[int] = set()
         self._poster_bytes: bytes | None = None
+        self._autoplay = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -161,7 +165,8 @@ class DetailsPage(QWidget):
 
     # ── load ──
 
-    def load(self, summary: AnimeSummary) -> None:
+    def load(self, summary: AnimeSummary, *, autoplay: bool = False) -> None:
+        self._autoplay = autoplay
         provider = provider_registry.get(summary.provider_id)
         if provider is None:
             self.error.emit(f"Unknown provider: {summary.provider_id}")
@@ -233,6 +238,27 @@ class DetailsPage(QWidget):
             self._poster_loader = PosterLoader(anime.poster_url)
             self._poster_loader.loaded.connect(self._poster_loaded)
             self._poster_loader.start()
+
+        # Hero "Play" on the home page lands here with autoplay=True:
+        # start the first episode as soon as the data is on screen.
+        if self._autoplay:
+            self._autoplay = False
+            ep = self._first_episode()
+            if ep is not None:
+                self.play_episode.emit(anime, ep, list(episodes))
+
+    def _first_episode(self) -> Episode | None:
+        """First episode to play, honouring the preferred-dub setting."""
+        if not self._episodes:
+            return None
+        pref = Config.load().preferred_dub.strip().lower()
+        if pref:
+            matching = [
+                e for e in self._episodes if e.dub and pref in e.dub.lower()
+            ]
+            if matching:
+                return min(matching, key=lambda e: e.number)
+        return self._episodes[0]
 
     def _poster_loaded(self, data: bytes) -> None:
         self._poster_bytes = data or None
@@ -327,12 +353,11 @@ class DetailsPage(QWidget):
         btns = QHBoxLayout()
         btns.setSpacing(10)
         if self._episodes:
-            play_btn = QPushButton("▶  Play")
+            play_btn = QPushButton("Play")
+            play_btn.setIcon(play_icon())
             play_btn.setObjectName("primary")
             play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            play_btn.clicked.connect(
-                lambda: self.play_episode.emit(anime, self._episodes[0], list(self._episodes))
-            )
+            play_btn.clicked.connect(self._play_first)
             btns.addWidget(play_btn)
 
         fav_btn = QPushButton(
@@ -452,6 +477,11 @@ class DetailsPage(QWidget):
         return section
 
     # ── actions ──
+
+    def _play_first(self) -> None:
+        ep = self._first_episode()
+        if self._anime and ep is not None:
+            self.play_episode.emit(self._anime, ep, list(self._episodes))
 
     def _toggle_favorite(self, btn: QPushButton) -> None:
         if not self._anime:

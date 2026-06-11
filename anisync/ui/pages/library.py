@@ -16,7 +16,12 @@ from PySide6.QtWidgets import (
 
 from anisync.core.library import get_library
 from anisync.core.models import ListKind
-from anisync.ui.widgets.anime_card import AnimeCard
+from anisync.ui.widgets.anime_card import POSTER_W, AnimeCard
+
+
+# Card footprint (poster + hover-scale padding) and the page's side padding.
+_CARD_W = POSTER_W + 24
+_PAGE_PAD = 128
 
 
 _KIND_LABELS = [
@@ -34,6 +39,9 @@ class LibraryPage(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+        self._cards: list[AnimeCard] = []
+        self._grid: QGridLayout | None = None
+        self._cols = 6
         root = QVBoxLayout(self)
         root.setContentsMargins(64, 32, 64, 32)
         root.setSpacing(20)
@@ -70,13 +78,17 @@ class LibraryPage(QWidget):
 
         container = QWidget()
         container.setStyleSheet("background: transparent;")
+        self._cards = []
+        self._grid = None
         if not items:
             v = QVBoxLayout(container)
             v.setContentsMargins(0, 80, 0, 0)
             v.setAlignment(Qt.AlignmentFlag.AlignCenter)
             v.setSpacing(14)
 
-            mark = QLabel("✦")
+            # U+2605 is covered by every default font stack we target;
+            # fancier dingbats (✦ U+2726) are missing from DejaVu on Linux.
+            mark = QLabel("★")
             mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
             mark.setStyleSheet("font-size:60px; color:#2A2A33;")
             v.addWidget(mark)
@@ -106,8 +118,36 @@ class LibraryPage(QWidget):
             grid.setContentsMargins(0, 0, 0, 0)
             grid.setSpacing(8)
             grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-            cols = 6
-            for i, s in enumerate(items):
-                card = AnimeCard(s, on_click=self.open_details.emit)
-                grid.addWidget(card, i // cols, i % cols)
+            self._grid = grid
+            self._cards = [
+                AnimeCard(s, on_click=self.open_details.emit) for s in items
+            ]
+            self._cols = self._column_count()
+            self._layout_cards()
         self._scroll.setWidget(container)
+
+    # ── responsive grid ─────────────────────────────────────────────────────
+
+    def _column_count(self) -> int:
+        # Grid uses 8px spacing + reserve room for the vertical scrollbar:
+        #   n cards fit when  n*card + (n-1)*spacing <= avail.
+        spacing = 8
+        avail = self.width() - _PAGE_PAD - 16
+        return max(1, (avail + spacing) // (_CARD_W + spacing))
+
+    def _layout_cards(self) -> None:
+        if self._grid is None:
+            return
+        for card in self._cards:
+            self._grid.removeWidget(card)
+        for idx, card in enumerate(self._cards):
+            self._grid.addWidget(card, idx // self._cols, idx % self._cols)
+
+    def resizeEvent(self, evt):  # noqa: N802
+        super().resizeEvent(evt)
+        if self._grid is None or not self._cards:
+            return
+        cols = self._column_count()
+        if cols != self._cols:
+            self._cols = cols
+            self._layout_cards()

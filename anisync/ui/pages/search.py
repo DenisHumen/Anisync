@@ -24,21 +24,28 @@ from PySide6.QtWidgets import (
 
 from anisync.core.models import AnimeSummary
 from anisync.core.registry import provider_registry
-from anisync.ui.widgets.anime_card import PosterCard
+from anisync.ui.widgets.anime_card import POSTER_W, PosterCard
 from anisync.ui.widgets.spinner import Spinner
 from anisync.utils.async_runner import run_async
 
 
-COLS_HINT = 6
+# Card footprint incl. the padding PosterCard reserves for its hover scale.
+_CARD_W = POSTER_W + 24
+# Horizontal page padding (body contentsMargins left+right).
+_PAGE_PAD = 128
 
 
 class SearchPage(QWidget):
     open_details = Signal(object)
-    play_request = Signal(object, object)
     error = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
+        self._cards: list[PosterCard] = []
+        self._cols = 6
+        # Monotonic token: a response is applied only if it belongs to the
+        # latest query, so a slow old request can't overwrite fresh results.
+        self._req_seq = 0
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -126,6 +133,10 @@ class SearchPage(QWidget):
         if q:
             self._do_search()
 
+    def focus_input(self) -> None:
+        self._input.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        self._input.selectAll()
+
     # ── input ─────────────────────────────────────────────────────────────
 
     def _on_text_changed(self, _txt: str) -> None:
@@ -146,13 +157,15 @@ class SearchPage(QWidget):
         q = self._input.text().strip()
         if not q:
             return
+        self._req_seq += 1
+        seq = self._req_seq
         self._clear_results()
         self._spinner.start()
         self._status.setText(f"Searching for “{q}”…")
         run_async(
             self._run(q),
-            on_done=self._render,
-            on_error=self._on_err,
+            on_done=lambda items, s=seq: self._render(items, s),
+            on_error=lambda e, s=seq: self._on_err(e, s),
         )
 
     async def _run(self, query: str) -> list[AnimeSummary]:
@@ -179,19 +192,24 @@ class SearchPage(QWidget):
             out.append(s)
         return out
 
-    def _render(self, items: list[AnimeSummary]) -> None:
+    def _render(self, items: list[AnimeSummary], seq: int) -> None:
+        if seq != self._req_seq:
+            return  # stale response from a superseded query
         self._spinner.stop()
         self._clear_results()
         if not items:
             self._status.setText("No matches.")
             return
         self._status.setText(f"{len(items)} result(s)")
-        cols = COLS_HINT
-        for idx, s in enumerate(items):
-            card = PosterCard(s, on_click=self.open_details.emit)
-            self._grid.addWidget(card, idx // cols, idx % cols)
+        self._cards = [
+            PosterCard(s, on_click=self.open_details.emit) for s in items
+        ]
+        self._cols = self._column_count()
+        self._layout_cards()
 
-    def _on_err(self, exc: Exception) -> None:
+    def _on_err(self, exc: Exception, seq: int) -> None:
+        if seq != self._req_seq:
+            return
         self._spinner.stop()
         self._status.setText("Search failed.")
         self.error.emit(str(exc))
@@ -202,3 +220,28 @@ class SearchPage(QWidget):
             w = item.widget()
             if w:
                 w.deleteLater()
+        self._cards = []
+
+    # ── responsive grid ─────────────────────────────────────────────────────
+
+    def _column_count(self) -> int:
+        # Reserve a little for the vertical scrollbar; grid spacing is 0 here.
+        avail = self.width() - _PAGE_PAD - 16
+        return max(1, avail // _CARD_W)
+
+    def _layout_cards(self) -> None:
+        # Re-place the already-built cards (no re-fetch) at the current
+        # column count so the grid reflows with the window width.
+        for card in self._cards:
+            self._grid.removeWidget(card)
+        for idx, card in enumerate(self._cards):
+            self._grid.addWidget(card, idx // self._cols, idx % self._cols)
+
+    def resizeEvent(self, evt):  # noqa: N802
+        super().resizeEvent(evt)
+        if not self._cards:
+            return
+        cols = self._column_count()
+        if cols != self._cols:
+            self._cols = cols
+            self._layout_cards()

@@ -22,6 +22,9 @@ def run(argv: list[str]) -> int:
     app = QApplication(argv)
     app.setApplicationName("Anisync")
     app.setOrganizationName("Anisync")
+    # Wayland matches windows to their .desktop entry by this name; without
+    # it the panel/dock shows a generic icon on modern Linux sessions.
+    app.setDesktopFileName("anisync")
     icon = logo_path()
     if icon.exists():
         app.setWindowIcon(QIcon(str(icon)))

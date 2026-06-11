@@ -38,8 +38,8 @@ python -m anisync
 pytest -q
 ```
 
-> Tip: `./run.sh` bootstraps the venv, self-heals a broken PySide6 install
-> and launches the app in one step.
+> Tip: `./run.sh` (macOS/Linux) or `.\run.ps1` (Windows PowerShell)
+> bootstraps the venv, installs deps and launches the app in one step.
 
 ## Documentation
 

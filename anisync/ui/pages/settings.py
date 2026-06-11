@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -113,6 +114,20 @@ class SettingsPage(QWidget):
 
         c.addLayout(form)
 
+        # Section: playback
+        c.addSpacing(6)
+        c.addWidget(self._section_label("Playback"))
+        self._autoplay = QCheckBox("Autoplay next episode when one finishes")
+        self._autoplay.setChecked(self._cfg.autoplay_next)
+        c.addWidget(self._autoplay)
+
+        # Section: updates
+        c.addSpacing(6)
+        c.addWidget(self._section_label("Updates"))
+        self._check_updates = QCheckBox("Check for updates on startup")
+        self._check_updates.setChecked(self._cfg.check_updates_on_start)
+        c.addWidget(self._check_updates)
+
         # Footer actions
         c.addSpacing(8)
         actions = QHBoxLayout()
@@ -144,6 +159,8 @@ class SettingsPage(QWidget):
         self._cfg.max_concurrent_downloads = self._concurrent.value()
         self._cfg.preferred_quality = self._quality.currentData() or "best"
         self._cfg.preferred_dub = self._dub.text()
+        self._cfg.autoplay_next = self._autoplay.isChecked()
+        self._cfg.check_updates_on_start = self._check_updates.isChecked()
         self._cfg.save()
         # Apply the new preferences to the running download manager so a
         # restart isn't needed for them to take effect.

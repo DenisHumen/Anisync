@@ -10,7 +10,7 @@ import sqlite3
 import threading
 import json
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from anisync.core.models import (
@@ -92,7 +92,9 @@ CREATE TABLE IF NOT EXISTS downloads (
 
 
 def _now() -> str:
-    return datetime.utcnow().isoformat(timespec="seconds")
+    # Naive UTC (matches the historical on-disk format); utcnow() is
+    # deprecated from Python 3.12 so derive it from an aware value instead.
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
 
 
 class LibraryService:

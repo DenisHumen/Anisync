@@ -10,7 +10,9 @@ Layout:
 """
 from __future__ import annotations
 
+import asyncio
 import random
+import time
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
@@ -29,6 +31,7 @@ from anisync.core.models import AnimeSummary
 from anisync.core.registry import provider_registry
 from anisync.ui.glass import fade_in
 from anisync.ui.widgets.carousel import Carousel
+from anisync.ui.widgets.icons import play_icon
 from anisync.ui.widgets.poster_loader import PosterLoader
 from anisync.utils.async_runner import run_async
 
@@ -38,15 +41,21 @@ from anisync.utils.async_runner import run_async
 # small providers usually return matches.
 TRENDING_SEEDS = ("naruto", "attack", "demon", "one piece", "jujutsu", "spy")
 
+# How long fetched remote rows stay fresh. Re-querying every provider on
+# every visit to Home wastes bandwidth and makes the hero re-randomize
+# (visible content churn) each time the user passes through the page.
+_REMOTE_TTL_SECONDS = 600
+
 
 class HomePage(QWidget):
     open_details = Signal(object)
+    play_featured = Signal(object)   # AnimeSummary — open details + autoplay
     request_search = Signal(str)
-    play_request = Signal(object, object)  # (Anime, Episode)
 
     def __init__(self) -> None:
         super().__init__()
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        self._last_remote_refresh = float("-inf")   # → first refresh always fetches
 
         # ── scroll-able body ─────────────────────────────────────────
         outer = QVBoxLayout(self)
@@ -70,14 +79,13 @@ class HomePage(QWidget):
         self._hero = _Hero()
         self._hero.explore_clicked.connect(lambda: self.request_search.emit(""))
         self._hero.info_clicked.connect(self.open_details.emit)
+        self._hero.play_clicked.connect(self.play_featured.emit)
         v.addWidget(self._hero)
 
         # ── Continue Watching ────────────────────────────────────────
         self._cw = Carousel("Continue Watching", kicker="Where you left off")
         self._cw.open_details.connect(self.open_details.emit)
         v.addWidget(self._cw)
-        self._cw_wrap = QWidget()        # for hide/show
-        # we use the carousel itself; wrap not needed
 
         # ── Trending Now ─────────────────────────────────────────────
         self._trending = Carousel(
@@ -103,8 +111,15 @@ class HomePage(QWidget):
 
     def refresh(self) -> None:
         self._refresh_continue_watching()
-        self._refresh_trending()
-        self._refresh_fresh()
+        # Local DB above is always refreshed; remote rows only when stale
+        # or still empty (e.g. the first fetch failed offline).
+        now = time.monotonic()
+        stale = now - self._last_remote_refresh > _REMOTE_TTL_SECONDS
+        if stale or self._trending.is_empty():
+            self._last_remote_refresh = now
+            self._refresh_trending()
+        if stale or self._fresh.is_empty():
+            self._refresh_fresh()
 
     def _refresh_continue_watching(self) -> None:
         history = get_library().list_history(limit=12)
@@ -137,25 +152,28 @@ class HomePage(QWidget):
     async def _fetch_pool(self, seeds, *, limit: int) -> list[AnimeSummary]:
         if not provider_registry:
             return []
-        results: list[AnimeSummary] = []
-        for seed in seeds:
-            for p in provider_registry.values():
-                try:
-                    chunk = await p.search(seed, limit=limit)
-                except Exception:
-                    chunk = []
-                results.extend(chunk)
-        # de-dup
+        providers = list(provider_registry.values())
+        # Fire every (seed × provider) query concurrently instead of
+        # awaiting them one-by-one — a cold home page used to block on a
+        # serial chain of network round-trips.
+        chunks = await asyncio.gather(
+            *(p.search(seed, limit=limit) for seed in seeds for p in providers),
+            return_exceptions=True,
+        )
+        # de-dup, preserving the seed-major / provider-minor ordering
         seen: set[tuple[str, str]] = set()
         unique: list[AnimeSummary] = []
-        for s in results:
-            k = (s.provider_id, s.url)
-            if k in seen:
+        for chunk in chunks:
+            if not isinstance(chunk, list):
                 continue
-            seen.add(k)
-            unique.append(s)
-            if len(unique) >= 24:
-                break
+            for s in chunk:
+                k = (s.provider_id, s.url)
+                if k in seen:
+                    continue
+                seen.add(k)
+                unique.append(s)
+                if len(unique) >= 24:
+                    return unique
         return unique
 
 
@@ -221,10 +239,13 @@ class _Hero(QFrame):
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(12)
-        self._play_btn = QPushButton("▶  Play")
+        self._play_btn = QPushButton("Play")
+        self._play_btn.setIcon(play_icon())
         self._play_btn.setObjectName("primary")
         self._play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._play_btn.clicked.connect(lambda: self._featured and self.info_clicked.emit(self._featured))
+        # Unlike "More info", Play opens Details with autoplay — the first
+        # episode starts as soon as the episode list is loaded.
+        self._play_btn.clicked.connect(lambda: self._featured and self.play_clicked.emit(self._featured))
         btn_row.addWidget(self._play_btn)
 
         self._info_btn = QPushButton("More info")

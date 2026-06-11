@@ -24,14 +24,14 @@ Each phase is mergeable on its own.
 - [x] Settings: max concurrent, download dir.
 
 ## Phase 4 — UI shell ✅
-- [x] Theme + main window with sidebar.
+- [x] Theme + main window with top navigation.
 - [x] Home, Search, Details, Player, Library, History, Downloads, Settings.
 - [x] Snackbar for errors.
 
 ## Phase 5 — Polish ✅
-- [x] **macOS 26 glass UI** — frameless window, animated wallpaper, platform-aware titlebar.
-- [x] **Type-ahead search** with debounced suggestion popup.
-- [x] **Inline animated download button** on search cards.
+- [x] **Apple TV / Crunchyroll dark UI** — frameless window, cinematic backdrop, platform-aware top nav.
+- [x] **Live search** — debounced as-you-type results grid with provider filter chips.
+- [x] **Episode tiles** with play/save actions on the details page.
 - [x] **Grouped downloads** with poster previews + per-episode progress bars.
 - [x] **Plex/Jellyfin-style player** with auto-hiding overlay and keyboard shortcuts.
 - [x] **Auth scaffold** (`core/auth.py` + `ui/pages/auth.py`) — offline mode today, ready for remote backend.

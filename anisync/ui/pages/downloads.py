@@ -85,9 +85,13 @@ class DownloadsPage(QWidget):
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # QScrollArea autofills its viewport with the system palette —
+        # without this the page shows a grey sheet over the dark theme.
+        self._scroll.setStyleSheet("background: transparent;")
         root.addWidget(self._scroll, 1)
 
         self._container = QWidget()
+        self._container.setStyleSheet("background: transparent;")
         self._vbox = QVBoxLayout(self._container)
         self._vbox.setSpacing(14)
         self._vbox.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -144,10 +148,10 @@ class DownloadsPage(QWidget):
         key = (task.provider_id, task.anime_url)
         grp = self._groups.get(key)
         if grp is None:
-            grp = self._add_group(key, [task])
-            return
-        row = grp.add_episode(task)
-        self._row_index[task.id] = row
+            self._add_group(key, [task])
+        else:
+            row = grp.add_episode(task)
+            self._row_index[task.id] = row
         self._update_summary()
 
     def _on_progress(self, tid: int, pct: float, speed: float) -> None:
@@ -340,6 +344,11 @@ class EpisodeRow(QFrame):
         self._retry_btn.clicked.connect(self._retry)
         h.addWidget(self._retry_btn)
 
+        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.setProperty("ghost", True)
+        self._cancel_btn.clicked.connect(self._cancel)
+        h.addWidget(self._cancel_btn)
+
         self._remove_btn = QPushButton("Remove")
         self._remove_btn.setProperty("ghost", True)
         self._remove_btn.clicked.connect(self._remove)
@@ -350,7 +359,9 @@ class EpisodeRow(QFrame):
     def _sync_buttons(self) -> None:
         is_failed = self.task.status in (DownloadStatus.FAILED, DownloadStatus.CANCELED)
         is_done = self.task.status == DownloadStatus.COMPLETED
+        is_active = self.task.status in (DownloadStatus.QUEUED, DownloadStatus.RUNNING)
         self._retry_btn.setVisible(is_failed)
+        self._cancel_btn.setVisible(is_active)
         self._remove_btn.setVisible(is_failed or is_done)
         self._open_btn.setVisible(is_done)
 
@@ -393,6 +404,13 @@ class EpisodeRow(QFrame):
         parent_page = self._find_page()
         if parent_page is not None:
             parent_page.refresh()
+
+    def _cancel(self) -> None:
+        # Ask the manager to stop the in-flight task; the row updates itself
+        # when the manager emits ``canceled`` (wired in DownloadsPage).
+        get_manager().cancel(self.task.id)
+        self._status.setText("Canceling…")
+        self._cancel_btn.setEnabled(False)
 
     def _remove(self) -> None:
         get_library().delete_download(self.task.id)

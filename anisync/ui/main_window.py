@@ -5,18 +5,30 @@ Layout (z-order back→front):
 2. ``TopNav`` strip pinned at the top, then the stacked content area.
 3. ``Snackbar`` overlay (bottom-centered toast).
 
-The window is frameless + translucent so the cinematic background reads
-edge-to-edge with no platform chrome. Window dragging is handled by
-TopNav; edge resize by a small event filter on the central widget.
+The window is frameless (no platform chrome) but **opaque**: the design
+is full-bleed black with square corners, so per-pixel translucency buys
+nothing visually while it is a notorious source of compositing bugs
+when combined with the embedded ``QOpenGLWidget`` video surface
+(black/flickering frames on Windows DWM, broken decorations on
+Wayland). Window dragging is handled by TopNav; edge resize by a small
+event filter on the central widget.
 """
 from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import QEvent, QPoint, QRect, Qt
-from PySide6.QtGui import QCursor, QMouseEvent
+from PySide6.QtCore import (
+    QEasingCurve,
+    QEvent,
+    QPoint,
+    QPropertyAnimation,
+    QRect,
+    Qt,
+)
+from PySide6.QtGui import QCursor, QKeySequence, QMouseEvent, QShortcut
 from PySide6.QtWidgets import (
     QFrame,
+    QGraphicsOpacityEffect,
     QMainWindow,
     QStackedWidget,
     QVBoxLayout,
@@ -53,6 +65,7 @@ NAV_ITEMS = [
     ("home",      "Home"),
     ("search",    "Search"),
     ("library",   "Library"),
+    ("history",   "History"),
     ("downloads", "Downloads"),
     ("account",   "Account"),
     ("settings",  "Settings"),
@@ -68,7 +81,6 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(build_qss(PALETTE))
 
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         # bootstrap services
         get_library()
@@ -136,9 +148,9 @@ class MainWindow(QMainWindow):
 
         # ── wiring ──────────────────────────────────────────────────
         self.home.open_details.connect(self._open_details)
+        self.home.play_featured.connect(lambda s: self._open_details(s, autoplay=True))
         self.home.request_search.connect(self._go_search)
         self.search.open_details.connect(self._open_details)
-        self.search.play_request.connect(self._play)
         self.search.error.connect(lambda msg: self._snackbar.show_message(msg, level="error"))
         self.details.play_episode.connect(self._play)
         self.details.download_episode.connect(self._download)
@@ -170,6 +182,10 @@ class MainWindow(QMainWindow):
         # Resume downloads interrupted by a previous run (best-effort).
         run_async(mgr.resume_pending(), on_error=lambda _e: None)
 
+        # Ctrl+F / Cmd+F jumps straight into search.
+        find = QShortcut(QKeySequence.StandardKey.Find, self)
+        find.activated.connect(self._focus_search)
+
         self._navigate("home")
         self._relayout_overlays()
 
@@ -191,24 +207,69 @@ class MainWindow(QMainWindow):
         # running in the background otherwise).
         if self._pages.currentWidget() is self.player and widget is not self.player:
             self.player.stop()
+        changed = self._pages.currentWidget() is not widget
         self._pages.setCurrentWidget(widget)
         self._nav.set_active(key if key in dict(NAV_ITEMS) else "")
         refresh = self._refreshers.get(key)
         if refresh:
             refresh()
+        if changed:
+            self._fade_page(widget)
 
-    def _open_details(self, summary) -> None:
+    def _fade_page(self, w: QWidget) -> None:
+        """Brief fade-in when a page becomes current.
+
+        The player page is excluded: QGraphicsOpacityEffect rasterizes the
+        widget tree and breaks the embedded QOpenGLWidget video surface.
+        """
+        if w is self.player:
+            return
+        prev = getattr(w, "_page_fade_anim", None)
+        if prev is not None:
+            try:
+                prev.stop()
+            except RuntimeError:
+                pass
+        eff = QGraphicsOpacityEffect(w)
+        eff.setOpacity(0.0)
+        w.setGraphicsEffect(eff)  # also deletes any previous effect
+        anim = QPropertyAnimation(eff, b"opacity", w)
+        anim.setDuration(160)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        def _done() -> None:
+            w._page_fade_anim = None
+            # Drop the effect entirely — pages must not render through a
+            # pixmap proxy once the transition is over.
+            w.setGraphicsEffect(None)
+
+        anim.finished.connect(_done)
+        w._page_fade_anim = anim
+        anim.start()
+
+    def _open_details(self, summary, *, autoplay: bool = False) -> None:
         if self._pages.currentWidget() is self.player:
             self.player.stop()
-        self.details.load(summary)
+        # Show the page first: with a warm cache load() renders (and with
+        # autoplay even starts playback) synchronously, and switching to
+        # Details afterwards would bury the freshly opened player.
+        changed = self._pages.currentWidget() is not self.details
         self._pages.setCurrentWidget(self.details)
-        # keep no nav active (Details is a sub-view)
-        self._nav.set_active("")
+        self._nav.set_active("")  # keep no nav active (Details is a sub-view)
+        if changed:
+            self._fade_page(self.details)
+        self.details.load(summary, autoplay=autoplay)
 
     def _go_search(self, query: str) -> None:
         self._navigate("search")
         if query:
             self.search.set_query(query)
+
+    def _focus_search(self) -> None:
+        self._navigate("search")
+        self.search.focus_input()
 
     def _play(self, anime: Anime, episode: Episode, playlist: list[Episode] | None = None) -> None:
         self._pages.setCurrentWidget(self.player)

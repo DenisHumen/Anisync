@@ -1,81 +1,92 @@
 # UI
 
-PySide6 (Qt 6) with a custom **macOS 26 glass** stylesheet — frameless
-window, animated coloured-blob wallpaper, semi-transparent panels and a
-platform-aware titlebar (traffic lights on macOS, conventional buttons
-on Windows / Linux).
+PySide6 (Qt 6) with an **Apple TV / Crunchyroll-inspired dark cinematic**
+look — frameless window, near-black surfaces, a single orange accent,
+poster-first cards. The top navigation strip doubles as the titlebar
+(traffic lights on macOS, drawn window buttons on Windows / Linux).
 
-Layout: persistent left sidebar + stacked main content area, all sitting
-on top of `WallpaperWidget` (see [`anisync/ui/glass.py`](../anisync/ui/glass.py)).
+Layout: `TopNav` pinned at the top + a `QStackedWidget` of pages, all
+sitting on top of `CinemaBackground`
+(see [`anisync/ui/glass.py`](../anisync/ui/glass.py)) — a static
+near-black backdrop with two corner glows.
 
 ## Page map
 
 | Page | Module | Purpose |
 |---|---|---|
-| Home | `ui/pages/home.py` | Hero banner + "Continue watching" rail |
-| Search | `ui/pages/search.py` | Live type-ahead suggestions + wide result cards with inline download progress |
-| Details | `ui/pages/details.py` | Poster, synopsis, dub picker, episode grid |
-| Player | `ui/pages/player.py` | Plex/Jellyfin-style overlay, auto-hide on idle, full keyboard control |
-| Library | `ui/pages/library.py` | Favorites + custom lists (WATCHING, PLANNING, …) |
-| History | `ui/pages/history.py` | Recently watched episodes with resume |
-| Downloads | `ui/pages/downloads.py` | Grouped by anime, per-episode + aggregate progress |
+| Home | `ui/pages/home.py` | Hero banner (Play = autoplay first episode) + Continue Watching / Trending / Fresh carousels |
+| Search | `ui/pages/search.py` | Debounced live search, provider filter chips, responsive poster grid |
+| Details | `ui/pages/details.py` | Hero with poster/synopsis, episode tiles grouped by dub, favorites/watching toggles |
+| Player | `ui/pages/player.py` | Embedded libmpv, Plex-style overlay (auto-hide in fullscreen), quality/dub/episode switchers, full keyboard control |
+| Library | `ui/pages/library.py` | Favorites + lists (Watching, Planning, …) as a responsive grid |
+| History | `ui/pages/history.py` | Recently watched episodes with progress bars |
+| Downloads | `ui/pages/downloads.py` | Grouped by anime, per-episode + aggregate progress, cancel/retry/open |
 | Account | `ui/pages/auth.py` | Sign-in / register form, offline-mode banner |
-| Settings | `ui/pages/settings.py` | Download path, concurrency, theme, update prefs |
+| Settings | `ui/pages/settings.py` | Download path, concurrency, preferred quality/dub |
 
 ## Widgets
 
-- `widgets/sidebar.py` — animated nav, active-state highlight.
-- `widgets/anime_card.py` — poster + hover overlay + favorite star.
-- `widgets/episode_list.py` — scrollable list with watched-state pill.
-- `widgets/snackbar.py` — bottom toast for non-blocking errors.
+- `widgets/topnav.py` — nav strip / titlebar; window drag + controls.
+- `widgets/anime_card.py` — `PosterCard`: poster-is-the-card tile with
+  hover scale + accent ring.
+- `widgets/carousel.py` — horizontal poster rail with animated paging
+  chevrons.
+- `widgets/icons.py` — QPainter-drawn monochrome icons (play, pause,
+  skip ±10, prev/next, fullscreen, back, volume, window controls).
+  **Use these instead of unicode glyphs / emoji** — media glyphs render
+  as tofu boxes with the default Linux fonts.
+- `widgets/poster_loader.py` — async poster fetch with an LRU on-disk
+  cache (capped at ~200 MB).
+- `widgets/snackbar.py` — bottom toast for non-blocking messages.
+- `widgets/spinner.py` — QPainter spinner + `LoadingPanel`.
 
 ## Theme
 
-`ui/theme.py` exports the QSS string and a `Palette` dataclass with
-**rgba glass tokens** (`glass`, `glass_strong`, `glass_hover`, `border`).
+`ui/theme.py` exports `build_qss(palette)` and a `Palette` dataclass.
 
-* Primary accent: `#F47521` (Crunchyroll orange) gradient to `#FF9B5C`.
-* Secondary accent: `#5AC8FA` (macOS blue) for progress bars.
-* Background: `#08080F` painted by `WallpaperWidget` with three
-  drifting `QRadialGradient` blobs.
-* Surfaces: `rgba(28,28,38,160)` glass cards + 1 px white inner border
-  + 30 px drop shadow via `anisync.ui.glass.apply_shadow(...)`.
+* Primary accent: `#F47521` (Crunchyroll orange), gradient to `#FF4D6D`
+  for primary CTAs and progress bars.
+* Background: pure black; surfaces `#0E0E10 / #16161A / #1F1F25` with a
+  1 px white hairline border.
+* Typography: system font stack (SF Pro on macOS, Segoe UI on Windows,
+  Inter/DejaVu fallback on Linux); object names `display/h1/h2/h3/
+  kicker/muted/dim` select sizes.
 
-Button variants are selected via Qt dynamic properties:
+Button variants are selected via object names or dynamic properties:
 
 ```python
-btn.setProperty("accent", True)   # orange gradient pill
-btn.setProperty("ghost",  True)   # outlined transparent
-btn.setProperty("icon",   True)   # circular 36 px icon button
+btn.setObjectName("primary")      # orange gradient pill (or property accent=True)
+btn.setObjectName("outlined")     # thin visible border
+btn.setProperty("ghost", True)    # invisible at rest
+btn.setProperty("icon",  True)    # circular 40 px icon button
 ```
 
-To re-theme, edit `theme.py` and the wallpaper colours in `glass.py` —
-every widget pulls colors from there.
+To re-theme, edit `theme.py` and the glow colours in `glass.py` —
+widgets must not hardcode colors.
 
-## Cross-platform glass
+## Cross-platform notes
 
-True OS blur (NSVisualEffectView / DWM acrylic) would need per-OS
-native bindings, so Anisync ships a **portable approximation**:
-
-1. `MainWindow` is `Qt.FramelessWindowHint | WA_TranslucentBackground`.
-2. `WallpaperWidget` paints animated coloured blobs at the back.
-3. Every panel is rgba-translucent so the colour bleeds through.
-4. Soft drop shadow + 1 px inner border gives the *frosted* feel.
-
-This works identically on macOS, Windows and Linux (KDE / GNOME, both
-Wayland and X11) without any conditional code paths.
+* The window is frameless (`FramelessWindowHint`) but **opaque** — do
+  not re-add `WA_TranslucentBackground`: per-pixel translucency buys
+  nothing on this full-bleed black design and is a known source of
+  compositing bugs with the embedded `QOpenGLWidget` video surface
+  (Windows DWM) and broken decorations on Wayland. Dragging is handled
+  by `TopNav`, edge-resize by an event filter in `MainWindow`.
+* Never rely on fonts shipping media/dingbat glyphs; draw icons via
+  `widgets/icons.py`.
+* Paths, config and cache locations come from `utils/paths.py`
+  (platformdirs) — never hardcode OS paths.
 
 ## Async UI
 
 UI calls into core via `utils.async_runner.run_async(coro, on_done, on_error)`
-which runs the coroutine on a background thread and marshals results back
-through Qt signals — never block the event loop.
+which runs the coroutine on a persistent background asyncio loop and
+marshals results back through Qt signals — never block the event loop.
 
 ## Adding a new page
 
 1. Create `ui/pages/myfeature.py` with a `QWidget` subclass.
-2. Register in `ui/main_window.py`:
-   ```python
-   self._add_page("My Feature", "icon.svg", MyFeaturePage())
-   ```
+2. Register it in `ui/main_window.py`: add to `NAV_ITEMS` (if it should
+   appear in the nav), `self._page_keys`, and `self._refreshers` (if it
+   has a `refresh()`), then wire its signals.
 3. Style only via theme tokens — no hardcoded colors.

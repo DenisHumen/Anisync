@@ -86,7 +86,7 @@ class LoadingPanel(QWidget):
         parent: QWidget | None = None,
         *,
         size: int = 52,
-        color: str = "#7A9CFF",
+        color: str = "#F47521",   # brand accent — keep spinners on-palette
     ) -> None:
         super().__init__(parent)
         v = QVBoxLayout(self)

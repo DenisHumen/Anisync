@@ -15,7 +15,7 @@ from __future__ import annotations
 import sys
 from typing import Any
 
-from PySide6.QtCore import QPoint, QTimer, Qt, Signal
+from PySide6.QtCore import QPoint, QSize, QTimer, Qt, Signal
 from PySide6.QtGui import QKeyEvent, QOpenGLContext
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import (
@@ -34,6 +34,16 @@ from anisync.core.config import Config
 from anisync.core.library import get_library
 from anisync.core.models import Anime, Episode, VideoSource
 from anisync.core.registry import resolve_for
+from anisync.ui.widgets.icons import (
+    back_icon,
+    fullscreen_icon,
+    next_icon,
+    pause_icon,
+    play_icon,
+    prev_icon,
+    skip_icon,
+    volume_pixmap,
+)
 from anisync.utils.async_runner import run_async
 from anisync.utils.mpv_loader import load_mpv
 
@@ -201,7 +211,7 @@ class PlayerPage(QWidget):
         self._sig_position.connect(self._apply_position, Qt.ConnectionType.QueuedConnection)
         self._sig_duration.connect(self._apply_duration, Qt.ConnectionType.QueuedConnection)
         self._sig_pause.connect(self._apply_pause, Qt.ConnectionType.QueuedConnection)
-        self._sig_eof.connect(lambda: self._step_episode(1), Qt.ConnectionType.QueuedConnection)
+        self._sig_eof.connect(self._on_eof, Qt.ConnectionType.QueuedConnection)
 
         # mpv is created lazily after the native window id is realised.
         self._mpv: Any = None
@@ -274,7 +284,9 @@ class PlayerPage(QWidget):
         wrap.setContentsMargins(20, 16, 20, 16)
 
         top = QHBoxLayout()
-        back = QPushButton("←")
+        back = QPushButton()
+        back.setIcon(back_icon())
+        back.setIconSize(QSize(20, 20))
         back.setProperty("icon", True)
         back.setToolTip("Back")
         back.clicked.connect(self.back_requested.emit)
@@ -291,7 +303,9 @@ class PlayerPage(QWidget):
 
         top.addStretch(1)
 
-        self._fs_btn = QPushButton("⤢")
+        self._fs_btn = QPushButton()
+        self._fs_btn.setIcon(fullscreen_icon())
+        self._fs_btn.setIconSize(QSize(18, 18))
         self._fs_btn.setProperty("icon", True)
         self._fs_btn.setToolTip("Toggle fullscreen (F)")
         self._fs_btn.clicked.connect(self._toggle_fullscreen)
@@ -311,21 +325,30 @@ class PlayerPage(QWidget):
         ctrl_row = QHBoxLayout()
         ctrl_row.setSpacing(10)
 
-        self._back10 = QPushButton("⟲ 10")
+        self._back10 = QPushButton()
+        self._back10.setIcon(skip_icon(10, forward=False))
+        self._back10.setIconSize(QSize(22, 22))
         self._back10.setProperty("icon", True)
-        self._back10.setMinimumWidth(54)
+        self._back10.setToolTip("Back 10 s (←)")
         self._back10.clicked.connect(lambda: self._skip(-10))
         ctrl_row.addWidget(self._back10)
 
-        self._play_btn = QPushButton("▶")
+        self._icon_play = play_icon()
+        self._icon_pause = pause_icon()
+        self._play_btn = QPushButton()
+        self._play_btn.setIcon(self._icon_play)
+        self._play_btn.setIconSize(QSize(18, 18))
         self._play_btn.setProperty("accent", True)
         self._play_btn.setFixedSize(54, 40)
+        self._play_btn.setToolTip("Play/Pause (Space)")
         self._play_btn.clicked.connect(self._toggle_play)
         ctrl_row.addWidget(self._play_btn)
 
-        self._fwd10 = QPushButton("10 ⟳")
+        self._fwd10 = QPushButton()
+        self._fwd10.setIcon(skip_icon(10, forward=True))
+        self._fwd10.setIconSize(QSize(22, 22))
         self._fwd10.setProperty("icon", True)
-        self._fwd10.setMinimumWidth(54)
+        self._fwd10.setToolTip("Forward 10 s (→)")
         self._fwd10.clicked.connect(lambda: self._skip(10))
         ctrl_row.addWidget(self._fwd10)
 
@@ -364,19 +387,25 @@ class PlayerPage(QWidget):
         self._ep_box.currentIndexChanged.connect(self._on_episode_changed)
         ctrl_row.addWidget(self._ep_box)
 
-        self._prev_btn = QPushButton("⏮")
+        self._prev_btn = QPushButton()
+        self._prev_btn.setIcon(prev_icon())
+        self._prev_btn.setIconSize(QSize(18, 18))
         self._prev_btn.setProperty("icon", True)
         self._prev_btn.setToolTip("Previous episode")
         self._prev_btn.clicked.connect(lambda: self._step_episode(-1))
         ctrl_row.addWidget(self._prev_btn)
 
-        self._next_btn = QPushButton("⏭")
+        self._next_btn = QPushButton()
+        self._next_btn.setIcon(next_icon())
+        self._next_btn.setIconSize(QSize(18, 18))
         self._next_btn.setProperty("icon", True)
         self._next_btn.setToolTip("Next episode")
         self._next_btn.clicked.connect(lambda: self._step_episode(1))
         ctrl_row.addWidget(self._next_btn)
 
-        vol_label = QLabel("🔊")
+        vol_label = QLabel()
+        vol_label.setPixmap(volume_pixmap())
+        vol_label.setFixedSize(18, 18)
         ctrl_row.addWidget(vol_label)
         self._vol = QSlider(Qt.Orientation.Horizontal)
         self._vol.setFixedWidth(110)
@@ -621,7 +650,7 @@ class PlayerPage(QWidget):
 
     def _apply_pause(self, paused: bool) -> None:
         self._paused = paused
-        self._play_btn.setText("▶" if paused else "❚❚")
+        self._play_btn.setIcon(self._icon_play if paused else self._icon_pause)
         if paused:
             self._wake_overlay()
             self._hide_timer.stop()
@@ -747,6 +776,12 @@ class PlayerPage(QWidget):
         target = next((e for e in eps if e.number == num), None)
         if target and (not self._episode or target.number != self._episode.number):
             self.play(self._anime, target, self._playlist)
+
+    def _on_eof(self) -> None:
+        # Honour the "autoplay next episode" preference; when disabled we
+        # simply stop at the end of the current episode.
+        if Config.load().autoplay_next:
+            self._step_episode(1)
 
     def _step_episode(self, delta: int) -> None:
         if not self._anime or not self._episode:

@@ -137,15 +137,22 @@ class TopNav(QFrame):
         return layout
 
     def _build_window_controls(self) -> QHBoxLayout:
+        # QPainter icons instead of "— ▢ ✕" text: those glyphs are not
+        # guaranteed by default Linux fonts and render inconsistently.
+        from anisync.ui.widgets.icons import close_icon, maximize_icon, minimize_icon
+
         layout = QHBoxLayout()
         layout.setSpacing(6)
         layout.setContentsMargins(0, 0, 0, 0)
-        for label, action in (
-            ("—", lambda: self.window().showMinimized()),
-            ("▢", self._toggle_max),
-            ("✕", lambda: self.window().close()),
+        for icon, tip, action in (
+            (minimize_icon(), "Minimize", lambda: self.window().showMinimized()),
+            (maximize_icon(), "Maximize / Restore", self._toggle_max),
+            (close_icon(), "Close", lambda: self.window().close()),
         ):
-            b = QPushButton(label)
+            b = QPushButton()
+            b.setIcon(icon)
+            b.setIconSize(QSize(14, 14))
+            b.setToolTip(tip)
             b.setProperty("ghost", True)
             b.setFixedSize(34, 28)
             b.clicked.connect(action)

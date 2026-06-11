@@ -330,22 +330,6 @@ def build_qss(p: Palette = PALETTE) -> str:
     #snackbar[level="success"] {{ border-left-color: {p.success}; }}
     #snackbar[level="warning"] {{ border-left-color: {p.warning}; }}
 
-    /* ── Suggestion popup ────────────────────────────────────── */
-    QFrame#suggest {{
-        background: {p.surface_2};
-        border: 1px solid {p.hairline_2};
-        border-radius: 14px;
-    }}
-    QFrame#suggest QPushButton {{
-        background: transparent;
-        border: none;
-        text-align: left;
-        padding: 10px 14px;
-        border-radius: 8px;
-        font-weight: 500;
-    }}
-    QFrame#suggest QPushButton:hover {{ background: rgba(255,255,255,16); }}
-
     /* ── Player overlay gradient ─────────────────────────────── */
     #playerOverlay {{
         background: qlineargradient(x1:0,y1:0,x2:0,y2:1,

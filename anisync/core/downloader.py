@@ -126,27 +126,32 @@ class DownloadManager:
     # ─── core ─────────────────────────────────────────────────────────────
 
     async def _run(self, task: DownloadTask) -> None:
-        async with self._sem:
-            if task.id in self._canceled:
-                self._mark(task, DownloadStatus.CANCELED)
-                self.signals.canceled.emit(task.id)
-                return
-            try:
-                self._mark(task, DownloadStatus.RUNNING)
-                self.signals.started.emit(task.id)
-                source = await self._pick_source(task)
-                await self._download(task, source)
-                self._mark(task, DownloadStatus.COMPLETED, progress=1.0)
-                self.signals.completed.emit(task.id)
-            except asyncio.CancelledError:
-                self._mark(task, DownloadStatus.CANCELED)
-                self.signals.canceled.emit(task.id)
-            except Exception as e:  # noqa: BLE001
-                log.exception("Download %s failed", task.id)
-                self._mark(task, DownloadStatus.FAILED, error=str(e))
-                self.signals.failed.emit(task.id, str(e))
-            finally:
-                self._tasks.pop(task.id, None)
+        try:
+            async with self._sem:
+                if task.id in self._canceled:
+                    self._mark(task, DownloadStatus.CANCELED)
+                    self.signals.canceled.emit(task.id)
+                    return
+                # CancelledError (a BaseException) is *not* caught here — it
+                # propagates to the outer handler so a download cancelled
+                # mid-flight is marked the same way as one cancelled while
+                # it was still queued for a concurrency slot.
+                try:
+                    self._mark(task, DownloadStatus.RUNNING)
+                    self.signals.started.emit(task.id)
+                    source = await self._pick_source(task)
+                    await self._download(task, source)
+                    self._mark(task, DownloadStatus.COMPLETED, progress=1.0)
+                    self.signals.completed.emit(task.id)
+                except Exception as e:  # noqa: BLE001
+                    log.exception("Download %s failed", task.id)
+                    self._mark(task, DownloadStatus.FAILED, error=str(e))
+                    self.signals.failed.emit(task.id, str(e))
+        except asyncio.CancelledError:
+            self._mark(task, DownloadStatus.CANCELED)
+            self.signals.canceled.emit(task.id)
+        finally:
+            self._tasks.pop(task.id, None)
 
     async def _pick_source(self, task: DownloadTask) -> VideoSource:
         resolver = resolve_for(task.embed_url)
