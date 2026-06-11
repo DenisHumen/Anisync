@@ -1,31 +1,54 @@
 # Updater
 
 Anisync polls **GitHub Releases** at startup (unless disabled in
-`Config.check_updates_on_start`) and offers to download the matching
-installer if a newer version is available.
+`Config.check_updates_on_start` / Settings → Updates) and offers a
+yes/no update prompt when a newer version exists. Release notes come
+straight from the GitHub release bodies, so the changelog the user sees
+is whatever you write in the release description.
 
 ## Flow
 
-1. `MainWindow.__init__` calls `UpdateService(cfg.update_repo).check()` via
-   `run_async(...)`.
-2. `UpdateService.check()` GETs `https://api.github.com/repos/{repo}/releases/latest`.
-3. Tag is parsed (`v0.2.0` → `(0, 2, 0)`) and compared to
-   `anisync.__version__`. Only newer versions return a `ReleaseInfo`.
-4. `MainWindow._on_update_check` opens `UpdateDialog` which shows the
-   changelog (`release.body`) and a "Download installer" button.
-5. The dialog calls `UpdateService.download_asset(asset, dest_dir)` which
-   streams the asset to `<data_dir>/updates/`. After the file is saved
-   the button switches to "Open installer" — the user runs the
-   installer manually (safer than auto-elevating).
+1. `MainWindow.__init__` calls `UpdateService(cfg.update_repo).check_with_news()`
+   via `run_async(...)`.
+2. `check_with_news()` GETs `/repos/{repo}/releases` (drafts and
+   prereleases skipped) and returns the newest release **plus every
+   release newer than the running version** — the dialog shows the
+   combined "what you missed" changelog with per-version dates. If the
+   list endpoint is unavailable it falls back to `/releases/latest`.
+3. `UpdateDialog` ("Install update" / "Later"):
+   - downloads the platform asset with **live progress** (MB done/total)
+     into `<data_dir>/updates/` — streamed to `*.part`, renamed when
+     complete so an interrupted download never looks like an installer;
+   - **packaged builds** (`selfupdate.can_self_update()`): the asset is
+     staged (`selfupdate.stage`) and a detached helper swaps the build
+     and relaunches (`selfupdate.apply_and_relaunch`) — fully automatic;
+   - **dev runs / non-writable installs**: the button becomes
+     "Open installer" and the user runs it manually.
+4. Settings → About also offers:
+   - **Check for updates** — manual check with inline status
+     ("You're up to date" / opens the update dialog);
+   - **What's new** — `ChangelogDialog` listing the full release history
+     (version, date, notes) with the running version badged *installed*.
+
+## API surface (`anisync/core/updater.py`)
+
+| call | purpose |
+|---|---|
+| `latest()` | newest release or `None` |
+| `check()` | newest release only if newer than `anisync.__version__` |
+| `releases(limit=10)` | history, newest first; `[]` on any error |
+| `check_with_news()` | `(latest, missed_releases)` or `None` |
+| `download_asset(asset, dir, progress=cb)` | streamed download, `cb(done, total)` throttled |
+| `compose_release_notes_md(releases, current_version=…)` | markdown digest for the dialogs |
 
 ## Configuration
 
-| key                          | default            | meaning                                |
-|------------------------------|--------------------|----------------------------------------|
-| `update_repo`                | `anisync/anisync`  | `owner/repo` on GitHub                 |
-| `check_updates_on_start`     | `true`             | disable to skip the check entirely     |
+| key                          | default              | meaning                                |
+|------------------------------|----------------------|----------------------------------------|
+| `update_repo`                | `DenisHumen/Anisync` | `owner/repo` on GitHub                 |
+| `check_updates_on_start`     | `true`               | disable to skip the startup check      |
 
-Stored in `<data_dir>/config.toml`.
+Stored in `<data_dir>/config.toml`; both editable in Settings.
 
 ## Asset naming
 
@@ -41,15 +64,16 @@ If nothing matches, the first asset is returned as a fallback.
 
 ## Offline behaviour
 
-Any HTTP error (timeout, DNS failure, 404) returns `None` — the app
-launches normally with no popup. The updater never blocks startup.
+Any HTTP error (timeout, DNS failure, 404, rate limit) returns
+`None`/`[]` — the app launches normally with no popup, the changelog
+dialog shows a friendly offline message. The updater never blocks
+startup.
 
 ## Tests
 
-`tests/test_updater.py` covers:
-
-* version parsing (incl. malformed),
-* `is_newer` comparisons,
-* per-platform asset selection,
-* `httpx.MockTransport` for `latest()` / `check()` (404 → None,
-  same version → None, newer → release).
+`tests/test_updater.py` covers version parsing, `is_newer`, per-platform
+asset selection, `latest()`/`check()` via `httpx.MockTransport`,
+release-history filtering (drafts/prereleases), `check_with_news`
+missed-version aggregation, download progress + atomic `*.part` rename,
+and the markdown digest (ordering, badges, empty bodies).
+`tests/test_selfupdate.py` covers install-target detection per platform.

@@ -74,6 +74,16 @@ def build_qss(p: Palette = PALETTE) -> str:
     /* ── Root shell ───────────────────────────────────────────── */
     #root          {{ background: transparent; }}
     QMainWindow    {{ background: {p.bg}; }}
+    QDialog        {{ background: {p.surface}; }}
+
+    /* Release notes / changelog viewers */
+    QTextBrowser#releaseNotes {{
+        background: {p.surface_2};
+        border: 1px solid {p.hairline};
+        border-radius: 12px;
+        padding: 12px;
+        font-size: 13px;
+    }}
 
     /* ── Top navigation bar ───────────────────────────────────── */
     #topnav {{

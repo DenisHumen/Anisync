@@ -1,6 +1,7 @@
 """Settings page — centered card layout."""
 from __future__ import annotations
 
+import anisync
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -128,6 +129,34 @@ class SettingsPage(QWidget):
         self._check_updates.setChecked(self._cfg.check_updates_on_start)
         c.addWidget(self._check_updates)
 
+        # Section: about
+        c.addSpacing(6)
+        c.addWidget(self._section_label("About"))
+        about_row = QHBoxLayout()
+        about_row.setSpacing(10)
+        ver = QLabel(f"Anisync  v{anisync.__version__}")
+        ver.setObjectName("muted")
+        about_row.addWidget(ver)
+        about_row.addStretch(1)
+
+        self._whatsnew_btn = QPushButton("What's new")
+        self._whatsnew_btn.setProperty("ghost", True)
+        self._whatsnew_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._whatsnew_btn.clicked.connect(self._show_changelog)
+        about_row.addWidget(self._whatsnew_btn)
+
+        self._check_now_btn = QPushButton("Check for updates")
+        self._check_now_btn.setObjectName("outlined")
+        self._check_now_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._check_now_btn.clicked.connect(self._check_now)
+        about_row.addWidget(self._check_now_btn)
+        c.addLayout(about_row)
+
+        self._update_status = QLabel("")
+        self._update_status.setObjectName("dim")
+        self._update_status.setWordWrap(True)
+        c.addWidget(self._update_status)
+
         # Footer actions
         c.addSpacing(8)
         actions = QHBoxLayout()
@@ -177,3 +206,37 @@ class SettingsPage(QWidget):
     def _reset_save_btn(self) -> None:
         self._save_btn.setText("Save changes")
         self._save_btn.setEnabled(True)
+
+    # ── updates / about ──────────────────────────────────────────────────
+
+    def _check_now(self) -> None:
+        from anisync.core.updater import UpdateService
+        from anisync.utils.async_runner import run_async
+
+        self._check_now_btn.setEnabled(False)
+        self._update_status.setText("Checking for updates…")
+        run_async(
+            UpdateService(self._cfg.update_repo).check_with_news(),
+            on_done=self._on_checked,
+            on_error=self._on_check_err,
+        )
+
+    def _on_checked(self, result) -> None:
+        self._check_now_btn.setEnabled(True)
+        if result is None:
+            self._update_status.setText(
+                f"You're up to date — v{anisync.__version__} is the latest version."
+            )
+            return
+        latest, news = result
+        self._update_status.setText(f"Version {latest.version} is available.")
+        from anisync.ui.dialogs.update_dialog import UpdateDialog
+        UpdateDialog(latest, news, self).exec()
+
+    def _on_check_err(self, _exc: Exception) -> None:
+        self._check_now_btn.setEnabled(True)
+        self._update_status.setText("Couldn't reach GitHub — check your connection.")
+
+    def _show_changelog(self) -> None:
+        from anisync.ui.dialogs.changelog_dialog import ChangelogDialog
+        ChangelogDialog(self._cfg.update_repo, self).exec()

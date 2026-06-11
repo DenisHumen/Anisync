@@ -291,15 +291,18 @@ class MainWindow(QMainWindow):
         if not cfg.check_updates_on_start:
             return
         run_async(
-            UpdateService(cfg.update_repo).check(),
+            UpdateService(cfg.update_repo).check_with_news(),
             on_done=self._on_update_check,
             on_error=lambda _e: None,
         )
 
-    def _on_update_check(self, release: ReleaseInfo | None) -> None:
-        if release is None:
+    def _on_update_check(
+        self, result: tuple[ReleaseInfo, list[ReleaseInfo]] | None
+    ) -> None:
+        if result is None:
             return
-        UpdateDialog(release, self).exec()
+        latest, news = result
+        UpdateDialog(latest, news, self).exec()
 
     # ── layout ────────────────────────────────────────────────────────────
 
